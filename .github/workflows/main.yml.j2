@@ -11,6 +11,14 @@ on:
         required: false
         description: 'Runner image name'
         default: 'windows-2022'
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
 
 jobs:
 {%- for arch in ["", "arm"] %}
@@ -21,7 +29,7 @@ jobs:
     needs: {{ prefix }}-{{ n }}
     if: needs.{{ prefix }}-{{ n }}.outputs.finished == 'false'
 {%- endif %}
-    runs-on: {% raw %}${{ github.event.inputs.runner }}{% endraw %}
+    runs-on: {% raw %}${{ github.event.inputs.runner || 'windows-2022' }}{% endraw %}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -147,7 +155,8 @@ jobs:
     needs: [build-final, build-arm-final]
     if: ${{ !cancelled() && !failure()
             && needs.build-final.result == 'success'
-            && needs.build-arm-final.result == 'success' }}
+            && needs.build-arm-final.result == 'success'
+            && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Download package
@@ -163,7 +172,7 @@ jobs:
         uses: softprops/action-gh-release@4634c16e79c963813287e889244c50009e7f0981
         with:
           fail_on_unmatched_files: true
-          prerelease: true
+          prerelease: {% raw %}${{ !startsWith(github.ref, 'refs/tags/v') }}{% endraw %}
           name: ${{ needs.build-final.outputs.version }}
           tag_name: ${{ needs.build-final.outputs.version }}
           files: |
