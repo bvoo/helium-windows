@@ -273,6 +273,35 @@ def main():
             for name, version in version_parts.items():
                 helium_version.append_version(f, name, version)
 
+        # Generate version manifest for auto-updater
+        version_manifest = {
+            "version": f"{version_parts['HELIUM_MAJOR']}.{version_parts['HELIUM_MINOR']}.{version_parts['HELIUM_PATCH']}.{version_parts['HELIUM_PLATFORM']}",
+            "build_time": int(time.time()),
+            "chromium_version": version_parts.get('CHROMIUM_VERSION', 'unknown'),
+            "helium_version_parts": version_parts,
+            "update_server": {
+                "type": "github_releases",
+                "repo_owner": "imputnet",
+                "repo_name": "helium-windows"
+            }
+        }
+        
+        # Write version manifest to build output
+        import json
+        manifest_path = source_tree / "version_manifest.json"
+        with open(manifest_path, "w", encoding=ENCODING) as f:
+            json.dump(version_manifest, f, indent=2)
+
+        # Copy auto-updater files
+        auto_updater_dest = source_tree / "auto_updater"
+        auto_updater_dest.mkdir(exist_ok=True)
+        
+        # Copy auto-updater Python module
+        shutil.copy2(_ROOT_DIR / "auto_updater.py", auto_updater_dest / "auto_updater.py")
+        
+        # Copy update configuration
+        shutil.copy2(_ROOT_DIR / "update_config.json", auto_updater_dest / "update_config.json")
+
         # Copy resources
         # First, generate and copy Windows-specific resources
         generate_resources.generate_resources(

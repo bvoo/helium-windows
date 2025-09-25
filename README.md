@@ -2,6 +2,25 @@
 
 Windows packaging for [Helium](https://github.com/imputnet/helium).
 
+## Features
+
+- **Privacy-focused**: Based on ungoogled-chromium with Helium's privacy enhancements
+- **Auto-updates**: Automatic update checking and installation from GitHub Releases
+- **Windows optimized**: Built specifically for Windows x64 and ARM64 architectures
+- **Code signed**: Free code signing provided by SignPath.io
+
+## Auto-Updates
+
+Helium Browser now includes automatic update functionality:
+
+- **Automatic checking**: Checks for updates every 24 hours by default
+- **User notifications**: Shows when new versions are available
+- **Manual checks**: Available through the browser menu (Settings → About → Check for Updates)
+- **Architecture support**: Automatically downloads the correct version for x64 or ARM64
+- **Configurable**: Update behavior can be customized via `update_config.json`
+
+For detailed information about the auto-update system, see [AUTO_UPDATE.md](AUTO_UPDATE.md).
+
 ## Credits
 
 This repo is based on
