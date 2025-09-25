@@ -1,0 +1,209 @@
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -1000,6 +1000,7 @@ void BrowserCommandController::InitCommandState() {
+ 
+   // Initialize commands for which the state changes based on fullscreen mode.
+   command_updater_.UpdateCommandEnabled(IDC_SHOW_BOOKMARK_BAR, true);
++  command_updater_.UpdateCommandEnabled(IDC_UPGRADE_DIALOG, true);
+ 
+   UpdateCommandsForFullscreenMode();
+   UpdateCommandsForContentRestrictions();
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -2850,6 +2850,15 @@ void BrowserView::ExecuteCommand(int id, const ui::Event& event) {
+     case IDC_SHOW_MANAGEMENT_PAGE:
+       chrome::ShowManagement(browser_);
+       break;
++    case IDC_UPGRADE_DIALOG:
++      // Show update dialog for Helium
++      {
++        auto* dialog = new views::DialogDelegateView();
++        dialog->SetTitle(u"Helium Update Available");
++        dialog->SetModalType(ui::MODAL_TYPE_WINDOW);
++        views::DialogDelegate::CreateDialogWidget(dialog, nullptr, GetWidget()->GetNativeView())->Show();
++      }
++      break;
+ 
+     default:
+       LOG(WARNING) << "Received Unimplemented Command: " << id;
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -385,6 +385,7 @@
+ #define IDC_SHOW_MANAGEMENT_PAGE                40081
+ #define IDC_PASTE_AND_GO                       40082
+ #define IDC_SHOW_SAVE_LOCAL_CARD_SIGN_IN_PROMO_IF_APPLICABLE 40083
++#define IDC_UPGRADE_DIALOG                      40084
+ 
+ // NOTE: Within each of the following sections, the IDs are ordered roughly by
+ // how they appear in the GUI/menus (left to right, top to bottom, etc.).
+--- a/chrome/browser/ui/views/frame/app_menu_model.cc
++++ b/chrome/browser/ui/views/frame/app_menu_model.cc
+@@ -250,6 +250,10 @@ void AppMenuModel::Build() {
+   AddSeparator(ui::NORMAL_SEPARATOR);
+   AddItemWithStringId(IDC_ABOUT, IDS_ABOUT);
+   AddItemWithStringId(IDC_HELP_PAGE_VIA_MENU, IDS_HELP_PAGE);
++  
++  // Add update check item to menu
++  AddSeparator(ui::NORMAL_SEPARATOR);
++  AddItemWithIcon(IDC_UPGRADE_DIALOG, u"Check for Updates", ui::ImageModel());
+ }
+ 
+ void AppMenuModel::LogMenuMetrics(int command_id) {
+--- a/chrome/browser/helium_updater.cc
++++ b/chrome/browser/helium_updater.cc
+@@ -0,0 +1,89 @@
++// Copyright 2025 The Helium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/helium_updater.h"
++
++#include "base/json/json_reader.h"
++#include "base/path_service.h"
++#include "base/files/file_util.h"
++#include "base/task/thread_pool.h"
++#include "base/threading/scoped_blocking_call.h"
++#include "chrome/common/chrome_paths.h"
++#include "services/network/public/cpp/simple_url_loader.h"
++#include "services/network/public/mojom/url_loader_factory.mojom.h"
++
++namespace helium {
++
++HeliumUpdater::HeliumUpdater() : weak_factory_(this) {}
++
++HeliumUpdater::~HeliumUpdater() = default;
++
++void HeliumUpdater::CheckForUpdates(UpdateCheckCallback callback) {
++  base::ThreadPool::PostTaskAndReplyWithResult(
++      FROM_HERE, {base::MayBlock()},
++      base::BindOnce(&HeliumUpdater::LoadVersionManifest),
++      base::BindOnce(&HeliumUpdater::OnVersionManifestLoaded,
++                     weak_factory_.GetWeakPtr(), std::move(callback)));
++}
++
++base::Value::Dict HeliumUpdater::LoadVersionManifest() {
++  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
++                                                base::BlockingType::MAY_BLOCK);
++
++  base::FilePath exe_dir;
++  if (!base::PathService::Get(base::DIR_EXE, &exe_dir)) {
++    return base::Value::Dict();
++  }
++
++  base::FilePath manifest_path = exe_dir.AppendASCII("version_manifest.json");
++  std::string manifest_content;
++  if (!base::ReadFileToString(manifest_path, &manifest_content)) {
++    return base::Value::Dict();
++  }
++
++  auto parsed_json = base::JSONReader::ReadAndReturnValueWithError(manifest_content);
++  if (!parsed_json.has_value() || !parsed_json->is_dict()) {
++    return base::Value::Dict();
++  }
++
++  return std::move(parsed_json->GetDict());
++}
++
++void HeliumUpdater::OnVersionManifestLoaded(UpdateCheckCallback callback,
++                                            base::Value::Dict manifest) {
++  if (manifest.empty()) {
++    std::move(callback).Run(false, "");
++    return;
++  }
++
++  const std::string* current_version = manifest.FindString("version");
++  if (!current_version) {
++    std::move(callback).Run(false, "");
++    return;
++  }
++
++  // For now, just simulate that an update is available
++  // In a real implementation, this would check against GitHub API
++  std::move(callback).Run(true, *current_version);
++}
++
++void HeliumUpdater::ShowUpdateDialog() {
++  // This would show the update UI
++  // For now, it's a placeholder
++}
++
++// Static method to get singleton instance
++HeliumUpdater* HeliumUpdater::GetInstance() {
++  static base::NoDestructor<HeliumUpdater> instance;
++  return instance.get();
++}
++
++void HeliumUpdater::SchedulePeriodicChecks() {
++  // Schedule periodic update checks
++  base::ThreadPool::PostDelayedTask(
++      FROM_HERE, {base::MayBlock()},
++      base::BindOnce(&HeliumUpdater::CheckForUpdates,
++                     weak_factory_.GetWeakPtr(),
++                     base::BindOnce([](bool available, const std::string& version) {
++                       // Handle periodic update check result
++                     })),
++      base::Hours(24));  // Check daily
++}
++
++}  // namespace helium
+--- a/chrome/browser/helium_updater.h
++++ b/chrome/browser/helium_updater.h
+@@ -0,0 +1,44 @@
++// Copyright 2025 The Helium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_HELIUM_UPDATER_H_
++#define CHROME_BROWSER_HELIUM_UPDATER_H_
++
++#include "base/callback.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++#include "base/values.h"
++
++namespace helium {
++
++// Callback for update check results
++using UpdateCheckCallback = base::OnceCallback<void(bool available, const std::string& version)>;
++
++class HeliumUpdater {
++ public:
++  HeliumUpdater();
++  ~HeliumUpdater();
++
++  HeliumUpdater(const HeliumUpdater&) = delete;
++  HeliumUpdater& operator=(const HeliumUpdater&) = delete;
++
++  // Check for available updates
++  void CheckForUpdates(UpdateCheckCallback callback);
++
++  // Show update dialog to user
++  void ShowUpdateDialog();
++
++  // Get singleton instance
++  static HeliumUpdater* GetInstance();
++
++  // Schedule periodic update checks
++  void SchedulePeriodicChecks();
++
++ private:
++  base::Value::Dict LoadVersionManifest();
++  void OnVersionManifestLoaded(UpdateCheckCallback callback, base::Value::Dict manifest);
++
++  base::WeakPtrFactory<HeliumUpdater> weak_factory_;
++};
++
++}  // namespace helium
++
++#endif  // CHROME_BROWSER_HELIUM_UPDATER_H_
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -5200,6 +5200,8 @@ static_library("browser") {
+     "gpu/gpu_mode_manager.h",
+     "guest_view/app_view/chrome_app_view_guest_delegate.cc",
+     "guest_view/app_view/chrome_app_view_guest_delegate.h",
++    "helium_updater.cc",
++    "helium_updater.h",
+     "hid/chrome_hid_delegate.cc",
+     "hid/chrome_hid_delegate.h",
+     "hid/hid_chooser_context.cc",

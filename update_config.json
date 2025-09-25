@@ -1,0 +1,26 @@
+{
+  "update_server": {
+    "type": "github_releases",
+    "repo_owner": "imputnet",
+    "repo_name": "helium-windows",
+    "check_interval_hours": 24
+  },
+  "update_preferences": {
+    "auto_check": true,
+    "auto_download": false,
+    "auto_install": false,
+    "notify_user": true,
+    "include_prereleases": false
+  },
+  "update_ui": {
+    "show_notification": true,
+    "notification_timeout_ms": 10000,
+    "show_in_menu": true,
+    "show_badge": true
+  },
+  "download_settings": {
+    "retry_attempts": 3,
+    "timeout_seconds": 300,
+    "verify_signatures": true
+  }
+}
